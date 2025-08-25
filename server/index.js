@@ -26,27 +26,31 @@ const app = express(); // <-- create app
 // ---- Middleware ----
 app.use(express.json()); // parse JSON bodies
 
-// --- CORS (allow frontend) ---
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"], // Next.js dev server
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  })
-);
+// --- CORS (allowlist for dev + prod) ---
+const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+if (process.env.CLIENT_ORIGIN) defaultAllowedOrigins.push(process.env.CLIENT_ORIGIN);
+if (process.env.CLIENT_ORIGINS) {
+  process.env.CLIENT_ORIGINS.split(",").forEach((o) => defaultAllowedOrigins.push(o.trim()));
+}
+// Common hosted defaults (can be overridden by env)
+defaultAllowedOrigins.push("https://geospatial-viewer.vercel.app");
 
-// Handle preflight OPTIONS requests
-app.options("*", cors());
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // mobile apps / curl
+    if (defaultAllowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS not allowed for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
 
-// Add headers middleware
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
-  res.header("Access-Control-Allow-Credentials", "true");
-  next();
-});
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // ---- MongoDB connection ----
 if (!process.env.MONGO_URI) {
